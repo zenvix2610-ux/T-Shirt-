@@ -1,4 +1,4 @@
-# தமிழ் Drifts
+# திகழ் Drifts
 
 Commerce workspace for the தமிழ் Drifts custom-print clothing brand. The
 website and Expo/React Native mobile app use the same FastAPI API and commerce database.
