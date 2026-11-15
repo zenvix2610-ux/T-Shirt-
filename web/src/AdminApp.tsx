@@ -14,17 +14,19 @@ type Summary = {
   low_stock_products: { variant_id: string; sku: string; product: string; size: string; color: string; stock: number; threshold: number }[];
   recent_orders: AdminOrder[];
 };
-type AdminOrder = { id: string; order_number: string; customer_name: string; customer_phone: string; status: string; total: number; created_at: string; items: { name: string; qty: number }[] };
+type AdminOrder = { id: string; order_number: string; customer_name: string; customer_phone: string; status: string; total: number; notes: string; created_at: string; items: { name: string; qty: number }[] };
+type CustomRequest = { id: string; name: string; phone: string; email: string; printing_type: string; size: string; color: string; qty: number; instructions: string; artwork_url: string; status: string; created_at: string };
 type AdminProduct = { id: string; name: string; name_ta: string; slug: string; category: string; category_id: string; description: string; base_price: number; compare_at_price: number | null; printing_type: string; is_featured: boolean; is_best_seller: boolean; is_new: boolean; is_active: boolean; price: number; in_stock: boolean; variants: { id: string; stock: number }[] };
 type Category = { id: string; name: string };
 type Inventory = { id: string; sku: string; product: string; size: string; color: string; stock: number; low_stock_threshold: number };
 type Customer = { id: string; name: string; email: string; phone: string; is_active: boolean; orders: number };
 type Settings = Record<string, string>;
-type Tab = "dashboard" | "orders" | "products" | "inventory" | "customers" | "reports" | "settings";
+type Tab = "dashboard" | "orders" | "custom-requests" | "products" | "inventory" | "customers" | "reports" | "settings";
 
 const tabs: { id: Tab; label: string; icon: string }[] = [
   { id: "dashboard", label: "Overview", icon: "⌂" },
   { id: "orders", label: "Orders", icon: "▤" },
+  { id: "custom-requests", label: "Custom requests", icon: "✎" },
   { id: "products", label: "Products", icon: "◇" },
   { id: "inventory", label: "Inventory", icon: "▦" },
   { id: "customers", label: "Customers", icon: "♙" },
@@ -40,6 +42,7 @@ export default function AdminApp() {
   const [notice, setNotice] = useState("");
   const [summary, setSummary] = useState<Summary | null>(null);
   const [orders, setOrders] = useState<AdminOrder[]>([]);
+  const [customRequests, setCustomRequests] = useState<CustomRequest[]>([]);
   const [products, setProducts] = useState<AdminProduct[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [inventory, setInventory] = useState<Inventory[]>([]);
@@ -53,6 +56,7 @@ export default function AdminApp() {
     try {
       if (current === "dashboard") setSummary(await api<Summary>("/admin/dashboard"));
       if (current === "orders") setOrders((await api<{ items: AdminOrder[] }>("/admin/orders")).items);
+      if (current === "custom-requests") setCustomRequests((await api<{ items: CustomRequest[] }>("/admin/custom-requests")).items);
       if (current === "products") {
         const [productData, categoryData] = await Promise.all([
           api<{ items: AdminProduct[] }>("/admin/products"),
@@ -307,13 +311,14 @@ export default function AdminApp() {
       {notice && <div className="admin-notice" role="status">{notice}<button onClick={() => setNotice("")}>×</button></div>}
       {tab === "dashboard" && <Dashboard summary={summary} onOrders={() => setTab("orders")} />}
       {tab === "orders" && <OrdersView rows={orders} busy={busy} onUpdate={(row, status) => void updateOrder(row, status)} />}
+      {tab === "custom-requests" && <CustomRequestsView rows={customRequests} />}
       {tab === "products" && <ProductsView rows={products} categories={categories} busy={busy} onCreate={createProduct} onCreateCategory={createCategory} onCreateVariant={createVariant} onUploadImage={uploadImage} onEdit={setEditingProduct} onDelete={(row) => void deleteProduct(row)} />}
       {tab === "inventory" && <InventoryView rows={inventory} busy={busy} onSave={(row, value) => void updateStock(row, value)} />}
       {tab === "customers" && <CustomersView rows={customers} busy={busy} onToggle={(row, value) => void setCustomerActive(row, value)} />}
       {tab === "reports" && <ReportsView data={report} />}
       {tab === "settings" && <SettingsView values={settings} busy={busy} onSave={saveSettings} />}
       {editingProduct && <ProductEdit product={editingProduct} categories={categories} busy={busy} onClose={() => setEditingProduct(null)} onSave={updateProduct} />}
-      <footer className="admin-footer">தமிழ் Drifts · Operational data is stored securely in the store database.</footer>
+      <footer className="admin-footer"> திகழ் Drifts · Operational data is stored securely in the store database.</footer>
     </main>
   </div>;
 }
@@ -331,7 +336,11 @@ function Dashboard({ summary, onOrders }: { summary: Summary | null; onOrders: (
 
 function OrdersView({ rows, busy, onUpdate }: { rows: AdminOrder[]; busy: boolean; onUpdate: (row: AdminOrder, status: string) => void }) {
   const statuses = ["Pending", "Confirmed", "Printing in Progress", "Quality Check", "Packed", "Shipped", "Delivered", "Cancelled", "Refunded"];
-  return <section className="admin-panel"><div className="admin-panel-heading"><div><p className="admin-eyebrow">FULFILMENT</p><h2>Orders ({rows.length})</h2></div></div><div className="admin-table-wrap"><table><thead><tr><th>Order</th><th>Customer</th><th>Items</th><th>Total</th><th>Update status</th></tr></thead><tbody>{rows.map((row) => <tr key={row.id}><td><b>{row.order_number}</b><small>{new Date(row.created_at).toLocaleString()}</small></td><td>{row.customer_name}<small>{row.customer_phone}</small></td><td>{row.items.map((item) => `${item.name} × ${item.qty}`).join(", ")}</td><td>{money(row.total)}</td><td><select disabled={busy} value={row.status} onChange={(event) => onUpdate(row, event.target.value)}>{statuses.map((status) => <option key={status}>{status}</option>)}</select></td></tr>)}</tbody></table>{!rows.length && <p className="admin-empty">No orders yet.</p>}</div></section>;
+  return <section className="admin-panel"><div className="admin-panel-heading"><div><p className="admin-eyebrow">FULFILMENT</p><h2>Orders ({rows.length})</h2></div></div><div className="admin-table-wrap"><table><thead><tr><th>Order</th><th>Customer</th><th>Items</th><th>Order notes</th><th>Total</th><th>Update status</th></tr></thead><tbody>{rows.map((row) => <tr key={row.id}><td><b>{row.order_number}</b><small>{new Date(row.created_at).toLocaleString()}</small></td><td>{row.customer_name}<small>{row.customer_phone}</small></td><td>{row.items.map((item) => `${item.name} × ${item.qty}`).join(", ")}</td><td className="admin-requirements-cell">{row.notes || "—"}</td><td>{money(row.total)}</td><td><select disabled={busy} value={row.status} onChange={(event) => onUpdate(row, event.target.value)}>{statuses.map((status) => <option key={status}>{status}</option>)}</select></td></tr>)}</tbody></table>{!rows.length && <p className="admin-empty">No orders yet.</p>}</div></section>;
+}
+
+function CustomRequestsView({ rows }: { rows: CustomRequest[] }) {
+  return <section className="admin-panel"><div className="admin-panel-heading"><div><p className="admin-eyebrow">CUSTOM PRINTS</p><h2>Custom requests ({rows.length})</h2></div></div><div className="admin-table-wrap"><table><thead><tr><th>Received</th><th>Customer</th><th>Design details</th><th>Requirements</th><th>Artwork</th><th>Status</th></tr></thead><tbody>{rows.map((row) => <tr key={row.id}><td>{new Date(row.created_at).toLocaleString()}</td><td><b>{row.name}</b><small>{row.phone}</small>{row.email && <small>{row.email}</small>}</td><td>{row.printing_type} · Size {row.size}<small>{row.color} · Qty {row.qty}</small></td><td className="admin-requirements-cell">{row.instructions || "—"}</td><td>{row.artwork_url ? <a href={row.artwork_url} target="_blank" rel="noreferrer">View artwork</a> : "—"}</td><td><span className="status-pill">{row.status}</span></td></tr>)}</tbody></table>{!rows.length && <p className="admin-empty">No custom requests yet.</p>}</div></section>;
 }
 
 function ProductsView({ rows, categories, busy, onCreate, onCreateCategory, onCreateVariant, onUploadImage, onEdit, onDelete }: { rows: AdminProduct[]; categories: Category[]; busy: boolean; onCreate: (event: FormEvent<HTMLFormElement>) => void; onCreateCategory: (event: FormEvent<HTMLFormElement>) => void; onCreateVariant: (event: FormEvent<HTMLFormElement>) => void; onUploadImage: (event: FormEvent<HTMLFormElement>) => void; onEdit: (row: AdminProduct) => void; onDelete: (row: AdminProduct) => void }) {

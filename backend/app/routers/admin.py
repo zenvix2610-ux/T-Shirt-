@@ -12,6 +12,7 @@ from ..models import (
     AuditLog,
     Category,
     Coupon,
+    CustomRequest,
     Order,
     Product,
     ProductImage,
@@ -31,7 +32,7 @@ from ..schemas import (
     StockIn,
     VariantIn,
 )
-from ..serializers import order_public, product_detail, setting_map
+from ..serializers import iso, order_public, product_detail, setting_map
 from ..services.commerce import audit, sales_report, set_order_status, upsert_setting
 from ..services.sheets import (
     inventory_row,
@@ -314,6 +315,40 @@ def list_orders(
     total = query.count()
     rows = query.offset((page - 1) * page_size).limit(page_size).all()
     return {"items": [order_public(row) for row in rows], "page": page, "page_size": page_size, "total": total}
+
+
+@router.get("/custom-requests")
+def list_custom_requests(
+    _: User = Depends(require_admin),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=30, ge=1, le=100),
+    db: Session = Depends(get_db),
+):
+    query = db.query(CustomRequest).order_by(CustomRequest.created_at.desc())
+    total = query.count()
+    rows = query.offset((page - 1) * page_size).limit(page_size).all()
+    return {
+        "items": [
+            {
+                "id": row.id,
+                "name": row.name,
+                "phone": row.phone,
+                "email": row.email,
+                "printing_type": row.printing_type,
+                "size": row.size,
+                "color": row.color,
+                "qty": row.qty,
+                "instructions": row.instructions,
+                "artwork_url": row.artwork_url,
+                "status": row.status,
+                "created_at": iso(row.created_at),
+            }
+            for row in rows
+        ],
+        "page": page,
+        "page_size": page_size,
+        "total": total,
+    }
 
 
 @router.patch("/orders/{order_id}/status")

@@ -88,6 +88,57 @@ def test_guest_checkout_is_idempotent_and_coupon_is_checked_server_side():
     assert retry.json()["id"] == first.json()["id"]
 
 
+def test_admin_can_view_custom_print_requirements():
+    email = f"custom-admin-{uuid4().hex}@example.com"
+    password = "PrivateAdmin#2026"
+    with SessionLocal() as db:
+        db.add(
+            User(
+                name="Custom Request Admin",
+                email=email,
+                phone="8610751463",
+                password_hash=hash_password(password),
+                role="admin",
+            )
+        )
+        db.commit()
+    with TestClient(app) as client:
+        created = client.post(
+            "/api/custom-requests",
+            data={
+                "name": "Custom Tester",
+                "phone": "8610751463",
+                "email": "custom@example.com",
+                "printing_type": "DTF",
+                "size": "L",
+                "color": "Emerald",
+                "qty": "3",
+                "instructions": "Small front print",
+            },
+        )
+        denied = client.get("/api/admin/custom-requests")
+        login = client.post("/api/auth/admin/login", json={"email": email, "password": password})
+        token = login.json()["access_token"]
+        allowed = client.get(
+            "/api/admin/custom-requests",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+    with SessionLocal() as db:
+        db.query(RefreshToken).filter(RefreshToken.user_id == login.json()["user"]["id"]).delete()
+        db.query(User).filter(User.email == email).delete()
+        db.commit()
+    assert created.status_code == 201
+    assert denied.status_code == 401
+    assert allowed.status_code == 200
+    request = next(row for row in allowed.json()["items"] if row["id"] == created.json()["id"])
+    assert request["instructions"] == "Small front print"
+    assert request["printing_type"] == "DTF"
+    assert request["size"] == "L"
+    assert request["color"] == "Emerald"
+    assert request["qty"] == 3
+    assert request["email"] == "custom@example.com"
+
+
 def test_custom_print_request_can_be_submitted_without_artwork():
     with TestClient(app) as client:
         response = client.post(
