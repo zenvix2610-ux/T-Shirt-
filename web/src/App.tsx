@@ -48,7 +48,7 @@ type HomeData = {
 type AuthUser = { id: string; name: string; email: string; phone: string; role: string };
 
 const emptyHome: HomeData = {
-  business: { name: "தமிழ் Drifts", phone: "8610751463", email: "thigazhadrifts@gmail.com", instagram: "thigazh_drifts", location: "Kottavadi, Yazhappadi", whatsapp: "919600311386", announcement: "" },
+  business: { name: "திகழ் Drifts", phone: "8610751463", email: "thigazhadrifts@gmail.com", instagram: "thigazh_drifts", location: "Kottavadi, Yazhappadi", whatsapp: "918610751463", announcement: "" },
   categories: [],
   featured: [],
   new_arrivals: [],
@@ -125,6 +125,7 @@ export default function App() {
   const [couponCode, setCouponCode] = useState("");
   const [discount, setDiscount] = useState(0);
   const [couponMessage, setCouponMessage] = useState("");
+  const [checkoutArtworkName, setCheckoutArtworkName] = useState("");
   const cartQty = useMemo(() => cart.reduce((total, item) => total + item.qty, 0), [cart]);
   const subtotal = useMemo(() => cart.reduce((total, item) => total + item.qty * item.price, 0), [cart]);
   const shipping = subtotal === 0 || subtotal >= home.shipping.free_above ? 0 : home.shipping.flat;
@@ -292,9 +293,20 @@ export default function App() {
       items: cart.map((line) => ({ variant_id: line.variantId, qty: line.qty })),
     };
     try {
-      const order = await api<{ order_number: string }>("/orders", { method: "POST", body: JSON.stringify(payload) });
+      const artwork = form.get("artwork");
+      let order: { order_number: string };
+      if (artwork instanceof File && artwork.name) {
+        const request = new FormData();
+        request.append("payload", JSON.stringify(payload));
+        request.append("artwork", artwork);
+        order = await api<{ order_number: string }>("/orders/with-artwork", { method: "POST", body: request });
+      } else {
+        order = await api<{ order_number: string }>("/orders", { method: "POST", body: JSON.stringify(payload) });
+      }
       setOrderNumber(order.order_number);
       setCart([]);
+      formElement.reset();
+      setCheckoutArtworkName("");
       setCheckoutOpen(false);
       setCartOpen(false);
     } catch (reason) {
@@ -363,10 +375,10 @@ export default function App() {
 
   return (
     <div className="app-shell">
-      <div className="announcement"><span>{home.business.announcement || "Made for your people. Printed in Kottavadi."}</span><a href={`https://wa.me/${home.business.whatsapp}?text=${encodeURIComponent("Hi தமிழ் Drifts, I have a question about a custom order.")}`} target="_blank" rel="noreferrer">Talk to our studio <span aria-hidden>↗</span></a></div>
+      <div className="announcement"><span>{home.business.announcement || "Made for your people. Printed in Kottavadi."}</span><a href={`https://wa.me/${home.business.whatsapp}?text=${encodeURIComponent("Hi  திகழ் Drifts, I have a question about a custom order.")}`} target="_blank" rel="noreferrer">Talk to our studio <span aria-hidden>↗</span></a></div>
       <header className="site-header">
         <a className="brand-lockup" href="#" onClick={(event) => { event.preventDefault(); setActivePage("home"); }}>
-          <span className="brand-mark">த</span><span className="brand-name">தமிழ் <i>Drifts</i><small>MADE TO MAKE A MARK</small></span>
+          <span className="brand-mark">த</span><span className="brand-name">திகழ் <i>Drifts</i><small>MADE TO MAKE A MARK</small></span>
         </a>
         <nav className="main-nav" aria-label="Main navigation">
           <button className={activePage === "home" ? "active" : ""} onClick={() => setActivePage("home")}>Home</button>
@@ -396,7 +408,7 @@ export default function App() {
             <div className="hero-image">
               <div className="hero-image-frame">
                 <img src={products.find((item) => item.is_featured)?.image || ""} alt="Premium custom printed T-shirt" />
-                <span className="image-stamp">தமிழ்<br /><small>MADE HERE</small></span>
+                <span className="image-stamp"> திகழ்<br /><small>MADE HERE</small></span>
               </div>
               <div className="hero-caption"><span>01 — YOUR IDEA, OUR CRAFT</span><span>Scroll to discover ↓</span></div>
             </div>
@@ -421,7 +433,7 @@ export default function App() {
           {productCards(home.new_arrivals, "Just landed.", "FRESH OFF THE PRESS")}
           <section className="story-row section-wrap">
             <div><p className="eyebrow">ROOTED HERE. WORN EVERYWHERE.</p><h2>A good tee has<br />a little <em>more</em> in it.</h2></div>
-            <div className="story-copy"><p>தமிழ் Drifts started with a simple thought: what if the clothes we wear could carry the things we care about? We print with intention, make in small batches, and keep every order personal — right here in Kottavadi.</p><a className="text-link" href={`https://www.instagram.com/${home.business.instagram}/`} target="_blank" rel="noreferrer">Follow our story <span>↗</span></a></div>
+            <div className="story-copy"><p>திகழ் Drifts started with a simple thought: what if the clothes we wear could carry the things we care about? We print with intention, make in small batches, and keep every order personal — right here in Kottavadi.</p><a className="text-link" href={`https://www.instagram.com/${home.business.instagram}/`} target="_blank" rel="noreferrer">Follow our story <span>↗</span></a></div>
           </section>
           {home.testimonials.length > 0 && <section className="review-section">
             <div className="section-wrap"><div className="section-heading"><div><p className="eyebrow gold-eyebrow">KIND WORDS, GOOD PEOPLE</p><h2>From the ones who wear it.</h2></div><span className="rating">★★★★★ <small>5.0 · CUSTOMER STORIES</small></span></div>
@@ -444,21 +456,21 @@ export default function App() {
       </main>}
 
       <footer className="site-footer">
-        <div className="footer-top"><a className="brand-lockup footer-brand" href="#" onClick={(event) => { event.preventDefault(); setActivePage("home"); }}><span className="brand-mark">த</span><span className="brand-name">தமிழ் <i>Drifts</i><small>MADE TO MAKE A MARK</small></span></a><p>Good tees. Good people.<br />A little more meaning.</p><a className="footer-cta" href={`https://wa.me/${home.business.whatsapp}?text=${encodeURIComponent("Hi தமிழ் Drifts, let's make something.")}`} target="_blank" rel="noreferrer">Let's make something <Icon name="arrow" /></a></div>
-        <div className="footer-bottom"><span>© {new Date().getFullYear()} தமிழ் Drifts · {home.business.location}</span><span><a href={`tel:${home.business.phone}`}>{home.business.phone}</a> · <a href={`mailto:${home.business.email}`}>{home.business.email}</a></span><a href={`https://www.instagram.com/${home.business.instagram}/`} target="_blank" rel="noreferrer">Instagram ↗</a></div>
+        <div className="footer-top"><a className="brand-lockup footer-brand" href="#" onClick={(event) => { event.preventDefault(); setActivePage("home"); }}><span className="brand-mark">த</span><span className="brand-name"> திகழ் <i>Drifts</i><small>MADE TO MAKE A MARK</small></span></a><p>Good tees. Good people.<br />A little more meaning.</p><a className="footer-cta" href={`https://wa.me/${home.business.whatsapp}?text=${encodeURIComponent("Hi தமிழ் Drifts, let's make something.")}`} target="_blank" rel="noreferrer">Let's make something <Icon name="arrow" /></a></div>
+        <div className="footer-bottom"><span>© {new Date().getFullYear()} திகழ் Drifts · {home.business.location}</span><span><a href={`tel:${home.business.phone}`}>{home.business.phone}</a> · <a href={`mailto:${home.business.email}`}>{home.business.email}</a></span><a href={`https://www.instagram.com/${home.business.instagram}/`} target="_blank" rel="noreferrer">Instagram ↗</a></div>
       </footer>
 
-      <a className="whatsapp-float" href={`https://wa.me/${home.business.whatsapp}?text=${encodeURIComponent("Hi தமிழ் Drifts, I'd love to know more.")}`} target="_blank" rel="noreferrer" aria-label="Chat with தமிழ் Drifts on WhatsApp"><span>◉</span><b>Let's chat</b></a>
+      <a className="whatsapp-float" href={`https://wa.me/${home.business.whatsapp}?text=${encodeURIComponent("Hi திகழ் Drifts, I'd love to know more.")}`} target="_blank" rel="noreferrer" aria-label="Chat with  Drifts on WhatsApp"><span>◉</span><b>Let's chat</b></a>
 
       {selected && <ProductModal product={selected} size={selectedSize} color={selectedColor} setSize={setSelectedSize} setColor={setSelectedColor} onClose={() => setSelected(null)} onAdd={(variant) => void addVariant(selected, variant)} />}
       {cartOpen && <div className="overlay" onMouseDown={(event) => { if (event.target === event.currentTarget) setCartOpen(false); }}><aside className="drawer"><div className="drawer-heading"><div><p className="eyebrow">YOUR GOOD THINGS</p><h2>Your bag <small>({cartQty})</small></h2></div><button className="close-button" aria-label="Close bag" onClick={() => setCartOpen(false)}><Icon name="close" /></button></div>
         <div className="drawer-lines">{cart.map((item) => <div className="cart-line" key={item.variantId}><img src={item.image} alt="" /><div className="cart-line-info"><b>{item.name}</b><small>{item.color} · {item.size}</small><div className="qty-control"><button aria-label="Decrease quantity" onClick={() => void changeQty(item, item.qty - 1)}>−</button><span>{item.qty}</span><button aria-label="Increase quantity" onClick={() => void changeQty(item, item.qty + 1)}>+</button></div></div><div className="cart-line-price"><b>{money(item.price * item.qty)}</b><button onClick={() => void removeLine(item)}>Remove</button></div></div>)}
           {!cart.length && <div className="empty-state">Your bag is taking a breather.<br /><button className="text-link" onClick={() => { setCartOpen(false); setActivePage("shop"); }}>Find your next favourite <Icon name="arrow" /></button></div>}
         </div>
-        {cart.length > 0 && <div className="drawer-summary"><form className="coupon-form" onSubmit={(event) => void applyCoupon(event)}><input value={couponInput} onChange={(event) => setCouponInput(event.target.value)} placeholder="Have a code?" aria-label="Coupon code" /><button>Apply</button></form>{couponMessage && <p className={discount ? "coupon-success" : "coupon-error"}>{couponMessage}</p>}<div><span>Subtotal</span><b>{money(subtotal)}</b></div>{discount > 0 && <div><span>Discount{couponCode ? ` · ${couponCode}` : ""}</span><b>−{money(discount)}</b></div>}<div><span>Shipping</span><b>{shipping ? money(shipping) : "On us"}</b></div><div className="cart-total"><span>Total</span><b>{money(total)}</b></div><p>{subtotal < home.shipping.free_above ? `${money(home.shipping.free_above - subtotal)} away from free shipping` : "You unlocked free shipping."}</p><button className="button button-dark full-button" onClick={() => { setOrderNumber(""); setCartOpen(false); setCheckoutOpen(true); }}>Continue to checkout <Icon name="arrow" /></button><small>Secure checkout · COD available</small></div>}
+        {cart.length > 0 && <div className="drawer-summary"><form className="coupon-form" onSubmit={(event) => void applyCoupon(event)}><input value={couponInput} onChange={(event) => setCouponInput(event.target.value)} placeholder="Have a code?" aria-label="Coupon code" /><button>Apply</button></form>{couponMessage && <p className={discount ? "coupon-success" : "coupon-error"}>{couponMessage}</p>}<div><span>Subtotal</span><b>{money(subtotal)}</b></div>{discount > 0 && <div><span>Discount{couponCode ? ` · ${couponCode}` : ""}</span><b>−{money(discount)}</b></div>}<div><span>Shipping</span><b>{shipping ? money(shipping) : "On us"}</b></div><div className="cart-total"><span>Total</span><b>{money(total)}</b></div><p>{subtotal < home.shipping.free_above ? `${money(home.shipping.free_above - subtotal)} away from free shipping` : "You unlocked free shipping."}</p><button className="button button-dark full-button" onClick={() => { setOrderNumber(""); setCheckoutArtworkName(""); setCartOpen(false); setCheckoutOpen(true); }}>Continue to checkout <Icon name="arrow" /></button><small>Secure checkout · COD available</small></div>}
       </aside></div>}
 
-      {checkoutOpen && <div className="overlay"><div className="modal checkout-modal"><button className="close-button modal-close" aria-label="Close checkout" onClick={() => setCheckoutOpen(false)}><Icon name="close" /></button>{orderNumber ? <div className="success-panel"><span className="success-check">✓</span><p className="eyebrow">IT'S ON ITS WAY</p><h2>Order received.</h2><p>Your order number is <b>{orderNumber}</b>. We'll be in touch as it moves through the studio.</p><button className="button button-dark" onClick={() => { setOrderNumber(""); setActivePage("shop"); }}>Keep exploring</button></div> : <><p className="eyebrow">ALMOST YOURS</p><h2>Delivery details.</h2><p className="modal-lead">Cash on delivery is available. Payment options will appear here once enabled by the store.</p><form className="form-grid" onSubmit={(event) => void handleCheckout(event)}><label>Full name<input name="name" required minLength={2} defaultValue={authUser?.name || ""} autoComplete="name" /></label><label>Mobile number<input name="phone" required pattern="[0-9+ ()-]{10,16}" defaultValue={authUser?.phone || ""} autoComplete="tel" /></label><label className="field-wide">Email address<input name="email" type="email" required defaultValue={authUser?.email || ""} autoComplete="email" /></label><label className="field-wide">Address line<input name="line1" required minLength={4} autoComplete="street-address" /></label><label>City<input name="city" required minLength={2} autoComplete="address-level2" /></label><label>Pincode<input name="pincode" required pattern="[0-9]{6}" maxLength={6} inputMode="numeric" autoComplete="postal-code" /></label><label className="field-wide">Order notes <textarea name="notes" rows={2} maxLength={1000} placeholder="Delivery directions or any extra details" /></label><div className="field-wide payment-note"><span>Payment method</span><b>Cash on delivery</b></div>{error && <p className="form-error field-wide">{error}</p>}<button className="button button-dark full-button field-wide" disabled={submitting}>{submitting ? "Placing your order…" : `Place order · ${money(total)}`}</button></form></>}</div></div>}
+      {checkoutOpen && <div className="overlay"><div className="modal checkout-modal"><button className="close-button modal-close" aria-label="Close checkout" onClick={() => setCheckoutOpen(false)}><Icon name="close" /></button>{orderNumber ? <div className="success-panel"><span className="success-check">✓</span><p className="eyebrow">IT'S ON ITS WAY</p><h2>Order received.</h2><p>Your order number is <b>{orderNumber}</b>. We'll be in touch as it moves through the studio.</p><button className="button button-dark" onClick={() => { setOrderNumber(""); setActivePage("shop"); }}>Keep exploring</button></div> : <><p className="eyebrow">ALMOST YOURS</p><h2>Delivery details.</h2><p className="modal-lead">Cash on delivery is available. Payment options will appear here once enabled by the store.</p><form className="form-grid" onSubmit={(event) => void handleCheckout(event)}><label>Full name<input name="name" required minLength={2} defaultValue={authUser?.name || ""} autoComplete="name" /></label><label>Mobile number<input name="phone" required pattern="[0-9+ ()-]{10,16}" defaultValue={authUser?.phone || ""} autoComplete="tel" /></label><label className="field-wide">Email address<input name="email" type="email" required defaultValue={authUser?.email || ""} autoComplete="email" /></label><label className="field-wide">Address line<input name="line1" required minLength={4} autoComplete="street-address" /></label><label>City<input name="city" required minLength={2} autoComplete="address-level2" /></label><label>Pincode<input name="pincode" required pattern="[0-9]{6}" maxLength={6} inputMode="numeric" autoComplete="postal-code" /></label><label className="field-wide">Order notes <textarea name="notes" rows={2} maxLength={1000} placeholder="Delivery directions or any extra details" /></label><label className="field-wide upload-field">Design artwork <small>Optional · JPG, PNG or WEBP · max 8 MB</small><input type="file" name="artwork" accept="image/jpeg,image/png,image/webp" onChange={(event) => setCheckoutArtworkName(event.target.files?.[0]?.name || "")} /><span className="upload-box">＋ <b>{checkoutArtworkName || "Choose an image"}</b></span></label><div className="field-wide payment-note"><span>Payment method</span><b>Cash on delivery</b></div>{error && <p className="form-error field-wide">{error}</p>}<button className="button button-dark full-button field-wide" disabled={submitting}>{submitting ? "Placing your order…" : `Place order · ${money(total)}`}</button></form></>}</div></div>}
 
       {authOpen && <AuthModal busy={submitting} onClose={() => setAuthOpen(false)} onSubmit={handleSignIn} />}
       {accountOpen && authUser && <AccountModal user={authUser} onClose={() => setAccountOpen(false)} onLogout={() => { void api("/auth/logout", { method: "POST", body: JSON.stringify({ refresh_token: localStorage.getItem("td_refresh_token") || "" }) }).catch(() => undefined); clearSession(); setAuthUser(null); setAccountOpen(false); setNotice("You have signed out."); }} />}

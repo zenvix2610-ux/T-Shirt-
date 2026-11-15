@@ -1,11 +1,14 @@
+import json
+from types import SimpleNamespace
 from uuid import uuid4
 
 from fastapi.testclient import TestClient
 
 from app.database import SessionLocal
 from app.main import app
-from app.models import RefreshToken, User
+from app.models import Notification, Order, RefreshToken, User, Variant
 from app.security import hash_password
+from app.services import storage
 
 
 def test_health_endpoint():
@@ -88,7 +91,96 @@ def test_guest_checkout_is_idempotent_and_coupon_is_checked_server_side():
     assert retry.json()["id"] == first.json()["id"]
 
 
-def test_admin_can_view_custom_print_requirements():
+def test_guest_checkout_can_upload_design_artwork(monkeypatch, tmp_path):
+    monkeypatch.setattr(storage, "UPLOAD_DIR", tmp_path)
+    monkeypatch.setattr(storage, "get_settings", lambda: SimpleNamespace(cloudinary_url=""))
+    admin_email = f"artwork-admin-{uuid4().hex}@example.com"
+    admin_password = "PrivateAdmin#2026"
+    with SessionLocal() as db:
+        db.add(
+            User(
+                name="Artwork Admin",
+                email=admin_email,
+                phone="8610751463",
+                password_hash=hash_password(admin_password),
+                role="admin",
+            )
+        )
+        db.commit()
+    with TestClient(app) as client:
+        product = client.get("/api/catalog/products?page_size=1").json()["items"][0]
+        detail = client.get(f"/api/catalog/products/{product['slug']}").json()
+        variant = next(item for item in detail["variants"] if item["stock"] > 0)
+        payload = {
+            "name": "Artwork Checkout Tester",
+            "phone": "9585561305",
+            "email": f"artwork-{uuid4().hex}@example.com",
+            "line1": "12 Test Street",
+            "city": "Yazhappadi",
+            "pincode": "636101",
+            "payment_method": "cod",
+            "idempotency_key": uuid4().hex,
+            "items": [{"variant_id": variant["id"], "qty": 1}],
+        }
+        request = {
+            "data": {"payload": json.dumps(payload)},
+            "files": {"artwork": ("design.png", b"test design", "image/png")},
+        }
+        created = client.post("/api/orders/with-artwork", **request)
+        retry = client.post("/api/orders/with-artwork", **request)
+        login = client.post(
+            "/api/auth/admin/login",
+            json={"email": admin_email, "password": admin_password},
+        )
+        admin_orders = client.get(
+            "/api/admin/orders",
+            headers={"Authorization": f"Bearer {login.json()['access_token']}"},
+        )
+        admin_headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
+        notifications = client.get("/api/admin/notifications", headers=admin_headers)
+        notification = next(
+            item for item in notifications.json()["items"]
+            if created.json()["order_number"] in item["body"]
+        )
+        marked_read = client.patch(
+            f"/api/admin/notifications/{notification['id']}/read",
+            headers=admin_headers,
+        )
+        remaining_notifications = client.get("/api/admin/notifications", headers=admin_headers)
+    with SessionLocal() as db:
+        order_number = created.json().get("order_number", "")
+        order = db.query(Order).filter(Order.order_number == order_number).first() if order_number else None
+        if order:
+            for item in order.items:
+                variant = db.get(Variant, item.variant_id)
+                if variant:
+                    variant.stock += item.qty
+            db.query(Notification).filter(
+                Notification.body == f"{order.order_number} · Artwork Checkout Tester"
+            ).delete()
+            db.delete(order)
+        admin_id = login.json().get("user", {}).get("id")
+        if admin_id:
+            db.query(Notification).filter(Notification.user_id == admin_id).delete()
+            db.query(RefreshToken).filter(RefreshToken.user_id == admin_id).delete()
+        db.query(User).filter(User.email == admin_email).delete()
+        db.commit()
+    assert created.status_code == 201
+    assert created.json()["artwork_url"].startswith("/uploads/orders/")
+    assert retry.status_code == 201
+    assert retry.json()["id"] == created.json()["id"]
+    assert retry.json()["artwork_url"] == created.json()["artwork_url"]
+    assert len(list((tmp_path / "orders").iterdir())) == 1
+    order = next(row for row in admin_orders.json()["items"] if row["id"] == created.json()["id"])
+    assert order["artwork_url"] == created.json()["artwork_url"]
+    assert notifications.json()["unread_count"] == 1
+    assert marked_read.status_code == 200
+    assert remaining_notifications.json()["unread_count"] == 0
+
+
+def test_admin_can_view_custom_print_requirements(monkeypatch, tmp_path):
+    monkeypatch.setattr(storage, "UPLOAD_DIR", tmp_path)
+    monkeypatch.setattr(storage, "get_settings", lambda: SimpleNamespace(cloudinary_url=""))
     email = f"custom-admin-{uuid4().hex}@example.com"
     password = "PrivateAdmin#2026"
     with SessionLocal() as db:
@@ -115,6 +207,7 @@ def test_admin_can_view_custom_print_requirements():
                 "qty": "3",
                 "instructions": "Small front print",
             },
+            files={"artwork": ("design.png", b"test design", "image/png")},
         )
         denied = client.get("/api/admin/custom-requests")
         login = client.post("/api/auth/admin/login", json={"email": email, "password": password})
@@ -137,6 +230,7 @@ def test_admin_can_view_custom_print_requirements():
     assert request["color"] == "Emerald"
     assert request["qty"] == 3
     assert request["email"] == "custom@example.com"
+    assert request["artwork_url"].startswith("/uploads/custom/")
 
 
 def test_custom_print_request_can_be_submitted_without_artwork():

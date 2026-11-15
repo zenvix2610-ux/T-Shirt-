@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
+from pydantic import ValidationError
 from sqlalchemy import or_
 from sqlalchemy.orm import Session, joinedload
 
@@ -219,6 +220,21 @@ def checkout(
     db: Session = Depends(get_db),
 ):
     order = place_order(db, user, payload)
+    return order_public(order)
+
+
+@router.post("/orders/with-artwork", status_code=201)
+def checkout_with_artwork(
+    payload: str = Form(),
+    artwork: UploadFile = File(),
+    user: User | None = Depends(get_user_from_token),
+    db: Session = Depends(get_db),
+):
+    try:
+        checkout_payload = CheckoutIn.model_validate_json(payload)
+    except ValidationError as exc:
+        raise HTTPException(status_code=422, detail="Invalid checkout details") from exc
+    order = place_order(db, user, checkout_payload, artwork)
     return order_public(order)
 
 

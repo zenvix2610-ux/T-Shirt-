@@ -1,7 +1,7 @@
 import secrets
 from datetime import timedelta
 
-from fastapi import HTTPException
+from fastapi import HTTPException, UploadFile
 from sqlalchemy.orm import Session, joinedload
 
 from ..models import (
@@ -12,6 +12,7 @@ from ..models import (
     DeliveryEvent,
     Notification,
     Order,
+    OrderArtwork,
     OrderItem,
     Payment,
     Product,
@@ -21,6 +22,7 @@ from ..models import (
     utcnow,
 )
 from ..serializers import money, product_image, setting_map, unit_price
+from .storage import save_image
 
 
 def audit(db: Session, actor_id: str | None, action: str, entity: str, entity_id: str, detail: str = "") -> None:
@@ -94,9 +96,16 @@ def load_lines(db: Session, user: User | None, raw_items: list | None) -> list[t
     return lines
 
 
-def place_order(db: Session, user: User | None, payload) -> Order:
+def place_order(db: Session, user: User | None, payload, artwork: UploadFile | None = None) -> Order:
     existing = db.query(Order).filter(Order.idempotency_key == payload.idempotency_key).first()
     if existing:
+        if artwork and existing.artwork is None:
+            existing.artwork = OrderArtwork(artwork_url=save_image(artwork, "orders"))
+            db.commit()
+            db.refresh(existing)
+            from .sheets import sync_order
+
+            sync_order(db, existing)
         return existing
 
     values = setting_map(db)
@@ -145,6 +154,8 @@ def place_order(db: Session, user: User | None, payload) -> Order:
     )
     db.add(order)
     db.flush()
+    if artwork:
+        order.artwork = OrderArtwork(artwork_url=save_image(artwork, "orders"))
     for variant, qty in lines:
         price = unit_price(variant)
         db.add(
@@ -174,6 +185,9 @@ def place_order(db: Session, user: User | None, payload) -> Order:
     if user is not None:
         db.query(CartItem).filter(CartItem.user_id == user.id).delete()
         notify(db, user.id, "Order placed", f"We received {order.order_number}. We will confirm it shortly.")
+    admins = db.query(User).filter(User.role == "admin", User.is_active.is_(True)).all()
+    for admin in admins:
+        notify(db, admin.id, "New order received", f"{order.order_number} · {order.customer_name}")
     audit(db, user.id if user else None, "order.create", "order", order.id, order.order_number)
     db.commit()
     db.refresh(order)

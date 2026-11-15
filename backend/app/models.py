@@ -200,6 +200,21 @@ class Order(Base):
     items: Mapped[list["OrderItem"]] = relationship(back_populates="order", cascade="all, delete-orphan")
     payments: Mapped[list["Payment"]] = relationship(back_populates="order", cascade="all, delete-orphan")
     events: Mapped[list["DeliveryEvent"]] = relationship(back_populates="order", cascade="all, delete-orphan")
+    artwork: Mapped["OrderArtwork | None"] = relationship(
+        back_populates="order", uselist=False, cascade="all, delete-orphan"
+    )
+
+
+class OrderArtwork(Base):
+    __tablename__ = "order_artworks"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    order_id: Mapped[str] = mapped_column(
+        ForeignKey("orders.id", ondelete="CASCADE"), unique=True, index=True
+    )
+    artwork_url: Mapped[str] = mapped_column(String(500))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    order: Mapped["Order"] = relationship(back_populates="artwork")
 
 
 class OrderItem(Base):

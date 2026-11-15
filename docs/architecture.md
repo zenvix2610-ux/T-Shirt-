@@ -20,15 +20,16 @@ The sync service creates these tabs when configured:
 3. `Inventory`
 4. `Customers`
 5. `Orders`
-6. `Order_Items`
-7. `Payments`
-8. `Custom_Requests`
-9. `Delivery`
-10. `Coupons`
-11. `Users`
-12. `Admin`
-13. `Settings`
-14. `Sync_Log` (operational audit tab in addition to the requested business
+6. `Order_Artwork`
+7. `Order_Items`
+8. `Payments`
+9. `Custom_Requests`
+10. `Delivery`
+11. `Coupons`
+12. `Users`
+13. `Admin`
+14. `Settings`
+15. `Sync_Log` (operational audit tab in addition to the requested business
     tabs)
 
 Each record uses its database ID; orders also have a customer-facing order
@@ -54,9 +55,12 @@ Base path: `/api`. Interactive API documentation is available at `/docs`.
 | GET/POST | `/cart` | Authenticated cart read/add |
 | PATCH/DELETE | `/cart/{item_id}` | Authenticated cart quantity/removal |
 | POST | `/orders` | Guest or customer checkout; validates stock and idempotency |
+| POST | `/orders/with-artwork` | Multipart checkout with optional uploaded design |
 | GET | `/orders` | Authenticated order history |
 | POST | `/orders/track` | Guest order lookup by order number and phone |
 | POST | `/custom-requests` | Custom print request with optional artwork upload |
+| GET | `/admin/notifications` | Admin's in-app notifications and unread count |
+| PATCH | `/admin/notifications/{notification_id}/read` | Mark an admin notification read |
 
 Razorpay initiation, server-side verification, order status and reporting
 services exist in the backend service layer; their customer/admin routes and

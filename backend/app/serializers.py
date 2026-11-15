@@ -132,6 +132,7 @@ def order_public(order: Order, *, include_events: bool = True) -> dict:
         "city": order.city,
         "pincode": order.pincode,
         "notes": order.notes,
+        "artwork_url": order.artwork.artwork_url if order.artwork else "",
         "created_at": iso(order.created_at),
         "updated_at": iso(order.updated_at),
         "items": [

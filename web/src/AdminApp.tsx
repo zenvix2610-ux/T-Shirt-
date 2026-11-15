@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import type { AdminUser } from "./adminTypes";
-import { api, clearSession, getToken, money, setSession } from "./api";
+import { api, assetUrl, clearSession, getToken, money, setSession } from "./api";
 import "./admin.css";
 
 type Summary = {
@@ -14,7 +14,8 @@ type Summary = {
   low_stock_products: { variant_id: string; sku: string; product: string; size: string; color: string; stock: number; threshold: number }[];
   recent_orders: AdminOrder[];
 };
-type AdminOrder = { id: string; order_number: string; customer_name: string; customer_phone: string; status: string; total: number; notes: string; created_at: string; items: { name: string; qty: number }[] };
+type AdminNotification = { id: string; title: string; body: string; is_read: boolean; created_at: string };
+type AdminOrder = { id: string; order_number: string; customer_name: string; customer_phone: string; status: string; total: number; notes: string; artwork_url: string; created_at: string; items: { name: string; qty: number }[] };
 type CustomRequest = { id: string; name: string; phone: string; email: string; printing_type: string; size: string; color: string; qty: number; instructions: string; artwork_url: string; status: string; created_at: string };
 type AdminProduct = { id: string; name: string; name_ta: string; slug: string; category: string; category_id: string; description: string; base_price: number; compare_at_price: number | null; printing_type: string; is_featured: boolean; is_best_seller: boolean; is_new: boolean; is_active: boolean; price: number; in_stock: boolean; variants: { id: string; stock: number }[] };
 type Category = { id: string; name: string };
@@ -40,6 +41,9 @@ export default function AdminApp() {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
+  const [notifications, setNotifications] = useState<AdminNotification[]>([]);
+  const [unreadNotifications, setUnreadNotifications] = useState(0);
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [summary, setSummary] = useState<Summary | null>(null);
   const [orders, setOrders] = useState<AdminOrder[]>([]);
   const [customRequests, setCustomRequests] = useState<CustomRequest[]>([]);
@@ -50,6 +54,7 @@ export default function AdminApp() {
   const [settings, setSettings] = useState<Settings>({});
   const [editingProduct, setEditingProduct] = useState<AdminProduct | null>(null);
   const [report, setReport] = useState<{ periods: { period: string; orders: number; revenue: number }[]; products: { name: string; qty: number; revenue: number }[] } | null>(null);
+  const seenNotificationIds = useRef(new Set<string>());
 
   const loadTab = useCallback(async (current: Tab) => {
     setError("");
@@ -79,9 +84,46 @@ export default function AdminApp() {
     }
   }, []);
 
+  const loadNotifications = useCallback(async (announceNew: boolean) => {
+    try {
+      const data = await api<{ items: AdminNotification[]; unread_count: number }>("/admin/notifications");
+      const newNotifications = data.items.filter(
+        (item) => !item.is_read && !seenNotificationIds.current.has(item.id),
+      );
+      data.items.forEach((item) => seenNotificationIds.current.add(item.id));
+      setNotifications(data.items);
+      setUnreadNotifications(data.unread_count);
+      if (announceNew && newNotifications.length) {
+        const latest = newNotifications[0];
+        setNotice(`${latest.title}: ${latest.body}`);
+      }
+    } catch (reason) {
+      const message = reason instanceof Error ? reason.message : "Could not load notifications.";
+      if (message.includes("Sign in") || message.includes("Admin access")) {
+        clearSession();
+        setAuthenticated(false);
+      } else {
+        setError(message);
+      }
+    }
+  }, []);
+
   useEffect(() => {
     if (authenticated) void loadTab(tab);
   }, [authenticated, loadTab, tab]);
+
+  useEffect(() => {
+    if (!authenticated) {
+      seenNotificationIds.current.clear();
+      setNotifications([]);
+      setUnreadNotifications(0);
+      return;
+    }
+    seenNotificationIds.current.clear();
+    void loadNotifications(false);
+    const timer = window.setInterval(() => void loadNotifications(true), 10000);
+    return () => window.clearInterval(timer);
+  }, [authenticated, loadNotifications]);
 
   async function signIn(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -108,7 +150,24 @@ export default function AdminApp() {
     clearSession();
     setAuthenticated(false);
     setSummary(null);
+    setNotificationsOpen(false);
     window.history.replaceState({}, "", "/admin/login");
+  }
+
+  async function openNotification(notification: AdminNotification) {
+    try {
+      if (!notification.is_read) {
+        await api(`/admin/notifications/${notification.id}/read`, { method: "PATCH" });
+        setNotifications((current) =>
+          current.map((item) => item.id === notification.id ? { ...item, is_read: true } : item),
+        );
+        setUnreadNotifications((count) => Math.max(0, count - 1));
+      }
+      setNotificationsOpen(false);
+      setTab("orders");
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Could not open that notification.");
+    }
   }
 
   async function updateOrder(order: AdminOrder, status: string) {
@@ -306,7 +365,7 @@ export default function AdminApp() {
 
   return <div className="admin-layout">
     <aside className="admin-sidebar"><a className="admin-logo" href="/"><span>த</span><div>தமிழ் Drifts<small>STUDIO ADMIN</small></div></a><p className="admin-side-label">WORKSPACE</p><nav>{tabs.map((item) => <button key={item.id} className={tab === item.id ? "current" : ""} onClick={() => setTab(item.id)}><span>{item.icon}</span>{item.label}{item.id === "orders" && summary?.pending_orders ? <i>{summary.pending_orders}</i> : null}</button>)}</nav><div className="admin-sidebar-bottom"><a href="/">↗ View storefront</a><button onClick={signOut}>↪ Sign out</button></div></aside>
-    <main className="admin-main"><header className="admin-topbar"><div><p className="admin-eyebrow">TAMIL DRIFTS · WORKSPACE</p><h1>{tabs.find((item) => item.id === tab)?.label}</h1></div><div className="admin-top-actions"><span className="admin-live-dot" />Store online<button onClick={() => void loadTab(tab)} aria-label="Refresh data">↻</button></div></header>
+    <main className="admin-main"><header className="admin-topbar"><div><p className="admin-eyebrow">TAMIL DRIFTS · WORKSPACE</p><h1>{tabs.find((item) => item.id === tab)?.label}</h1></div><div className="admin-top-actions"><span className="admin-live-dot" />Store online<div className="admin-notification-wrap"><button className="admin-notification-button" aria-label={`Notifications, ${unreadNotifications} unread`} aria-expanded={notificationsOpen} onClick={() => setNotificationsOpen((open) => !open)}>♧{unreadNotifications > 0 && <i>{unreadNotifications > 99 ? "99+" : unreadNotifications}</i>}</button>{notificationsOpen && <section className="admin-notification-popover"><div className="admin-notification-heading"><b>Notifications</b><button onClick={() => setNotificationsOpen(false)} aria-label="Close notifications">×</button></div>{notifications.length ? notifications.map((item) => <button key={item.id} className={`admin-notification-item${item.is_read ? " read" : ""}`} onClick={() => void openNotification(item)}><b>{item.title}</b><span>{item.body}</span><small>{new Date(item.created_at).toLocaleString()}</small></button>) : <p className="admin-notification-empty">No notifications yet.</p>}</section>}</div><button onClick={() => void loadTab(tab)} aria-label="Refresh data">↻</button></div></header>
       {error && <div className="admin-alert">{error}<button onClick={() => setError("")}>×</button></div>}
       {notice && <div className="admin-notice" role="status">{notice}<button onClick={() => setNotice("")}>×</button></div>}
       {tab === "dashboard" && <Dashboard summary={summary} onOrders={() => setTab("orders")} />}
@@ -336,11 +395,11 @@ function Dashboard({ summary, onOrders }: { summary: Summary | null; onOrders: (
 
 function OrdersView({ rows, busy, onUpdate }: { rows: AdminOrder[]; busy: boolean; onUpdate: (row: AdminOrder, status: string) => void }) {
   const statuses = ["Pending", "Confirmed", "Printing in Progress", "Quality Check", "Packed", "Shipped", "Delivered", "Cancelled", "Refunded"];
-  return <section className="admin-panel"><div className="admin-panel-heading"><div><p className="admin-eyebrow">FULFILMENT</p><h2>Orders ({rows.length})</h2></div></div><div className="admin-table-wrap"><table><thead><tr><th>Order</th><th>Customer</th><th>Items</th><th>Order notes</th><th>Total</th><th>Update status</th></tr></thead><tbody>{rows.map((row) => <tr key={row.id}><td><b>{row.order_number}</b><small>{new Date(row.created_at).toLocaleString()}</small></td><td>{row.customer_name}<small>{row.customer_phone}</small></td><td>{row.items.map((item) => `${item.name} × ${item.qty}`).join(", ")}</td><td className="admin-requirements-cell">{row.notes || "—"}</td><td>{money(row.total)}</td><td><select disabled={busy} value={row.status} onChange={(event) => onUpdate(row, event.target.value)}>{statuses.map((status) => <option key={status}>{status}</option>)}</select></td></tr>)}</tbody></table>{!rows.length && <p className="admin-empty">No orders yet.</p>}</div></section>;
+  return <section className="admin-panel"><div className="admin-panel-heading"><div><p className="admin-eyebrow">FULFILMENT</p><h2>Orders ({rows.length})</h2></div></div><div className="admin-table-wrap"><table><thead><tr><th>Order</th><th>Customer</th><th>Items</th><th>Order notes</th><th>Design</th><th>Total</th><th>Update status</th></tr></thead><tbody>{rows.map((row) => <tr key={row.id}><td><b>{row.order_number}</b><small>{new Date(row.created_at).toLocaleString()}</small></td><td>{row.customer_name}<small>{row.customer_phone}</small></td><td>{row.items.map((item) => `${item.name} × ${item.qty}`).join(", ")}</td><td className="admin-requirements-cell">{row.notes || "—"}</td><td>{row.artwork_url ? <a className="admin-artwork-preview" href={assetUrl(row.artwork_url)} target="_blank" rel="noreferrer"><img src={assetUrl(row.artwork_url)} alt={`Design for ${row.order_number}`} /><span>Open full image</span></a> : "—"}</td><td>{money(row.total)}</td><td><select disabled={busy} value={row.status} onChange={(event) => onUpdate(row, event.target.value)}>{statuses.map((status) => <option key={status}>{status}</option>)}</select></td></tr>)}</tbody></table>{!rows.length && <p className="admin-empty">No orders yet.</p>}</div></section>;
 }
 
 function CustomRequestsView({ rows }: { rows: CustomRequest[] }) {
-  return <section className="admin-panel"><div className="admin-panel-heading"><div><p className="admin-eyebrow">CUSTOM PRINTS</p><h2>Custom requests ({rows.length})</h2></div></div><div className="admin-table-wrap"><table><thead><tr><th>Received</th><th>Customer</th><th>Design details</th><th>Requirements</th><th>Artwork</th><th>Status</th></tr></thead><tbody>{rows.map((row) => <tr key={row.id}><td>{new Date(row.created_at).toLocaleString()}</td><td><b>{row.name}</b><small>{row.phone}</small>{row.email && <small>{row.email}</small>}</td><td>{row.printing_type} · Size {row.size}<small>{row.color} · Qty {row.qty}</small></td><td className="admin-requirements-cell">{row.instructions || "—"}</td><td>{row.artwork_url ? <a href={row.artwork_url} target="_blank" rel="noreferrer">View artwork</a> : "—"}</td><td><span className="status-pill">{row.status}</span></td></tr>)}</tbody></table>{!rows.length && <p className="admin-empty">No custom requests yet.</p>}</div></section>;
+  return <section className="admin-panel"><div className="admin-panel-heading"><div><p className="admin-eyebrow">CUSTOM PRINTS</p><h2>Custom requests ({rows.length})</h2></div></div><div className="admin-table-wrap"><table><thead><tr><th>Received</th><th>Customer</th><th>Design details</th><th>Requirements</th><th>Artwork</th><th>Status</th></tr></thead><tbody>{rows.map((row) => <tr key={row.id}><td>{new Date(row.created_at).toLocaleString()}</td><td><b>{row.name}</b><small>{row.phone}</small>{row.email && <small>{row.email}</small>}</td><td>{row.printing_type} · Size {row.size}<small>{row.color} · Qty {row.qty}</small></td><td className="admin-requirements-cell">{row.instructions || "—"}</td><td>{row.artwork_url ? <a className="admin-artwork-preview" href={assetUrl(row.artwork_url)} target="_blank" rel="noreferrer"><img src={assetUrl(row.artwork_url)} alt={`Design for ${row.name}`} /><span>Open full image</span></a> : "—"}</td><td><span className="status-pill">{row.status}</span></td></tr>)}</tbody></table>{!rows.length && <p className="admin-empty">No custom requests yet.</p>}</div></section>;
 }
 
 function ProductsView({ rows, categories, busy, onCreate, onCreateCategory, onCreateVariant, onUploadImage, onEdit, onDelete }: { rows: AdminProduct[]; categories: Category[]; busy: boolean; onCreate: (event: FormEvent<HTMLFormElement>) => void; onCreateCategory: (event: FormEvent<HTMLFormElement>) => void; onCreateVariant: (event: FormEvent<HTMLFormElement>) => void; onUploadImage: (event: FormEvent<HTMLFormElement>) => void; onEdit: (row: AdminProduct) => void; onDelete: (row: AdminProduct) => void }) {

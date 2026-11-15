@@ -13,6 +13,7 @@ from ..models import (
     Category,
     Coupon,
     CustomRequest,
+    Notification,
     Order,
     Product,
     ProductImage,
@@ -101,6 +102,52 @@ def dashboard(_: User = Depends(require_admin), db: Session = Depends(get_db)):
         ],
         "recent_orders": [order_public(row, include_events=False) for row in latest],
     }
+
+
+@router.get("/notifications")
+def list_admin_notifications(user: User = Depends(require_admin), db: Session = Depends(get_db)):
+    rows = (
+        db.query(Notification)
+        .filter(Notification.user_id == user.id)
+        .order_by(Notification.created_at.desc())
+        .limit(30)
+        .all()
+    )
+    unread_count = (
+        db.query(func.count(Notification.id))
+        .filter(Notification.user_id == user.id, Notification.is_read.is_(False))
+        .scalar()
+    )
+    return {
+        "items": [
+            {
+                "id": row.id,
+                "title": row.title,
+                "body": row.body,
+                "is_read": row.is_read,
+                "created_at": iso(row.created_at),
+            }
+            for row in rows
+        ],
+        "unread_count": unread_count or 0,
+    }
+
+
+@router.patch("/notifications/{notification_id}/read")
+def mark_admin_notification_read(
+    notification_id: str,
+    user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    row = db.query(Notification).filter(
+        Notification.id == notification_id,
+        Notification.user_id == user.id,
+    ).first()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Notification not found")
+    row.is_read = True
+    db.commit()
+    return {"id": row.id, "is_read": row.is_read}
 
 
 @router.get("/categories")

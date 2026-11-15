@@ -22,6 +22,7 @@ SHEETS = [
     "Inventory",
     "Customers",
     "Orders",
+    "Order_Artwork",
     "Order_Items",
     "Payments",
     "Custom_Requests",
@@ -39,6 +40,7 @@ HEADERS = {
     "Inventory": ["id", "variant_id", "sku", "stock", "low_stock_threshold", "updated_at"],
     "Customers": ["id", "name", "email", "phone", "is_active", "created_at"],
     "Orders": ["id", "order_number", "customer_id", "customer_name", "customer_email", "customer_phone", "status", "payment_status", "payment_method", "subtotal", "shipping", "discount", "total", "coupon_code", "city", "pincode", "address", "idempotency_key", "created_at", "updated_at"],
+    "Order_Artwork": ["id", "order_id", "order_number", "artwork_url", "created_at"],
     "Order_Items": ["id", "order_id", "product_id", "variant_id", "name", "size", "color", "qty", "unit_price", "line_total"],
     "Payments": ["id", "order_id", "provider", "status", "amount", "currency", "reference", "created_at", "updated_at"],
     "Custom_Requests": ["id", "customer_id", "name", "phone", "email", "printing_type", "size", "color", "qty", "instructions", "artwork_url", "status", "created_at"],
@@ -244,6 +246,14 @@ def upsert_row(db: Session, sheet: str, row: dict) -> None:
 
 def sync_order(db: Session, order: Order) -> None:
     upsert_row(db, "Orders", order_row(order))
+    if order.artwork:
+        upsert_row(db, "Order_Artwork", assert_safe({
+            "id": order.artwork.id,
+            "order_id": order.id,
+            "order_number": order.order_number,
+            "artwork_url": order.artwork.artwork_url,
+            "created_at": iso(order.artwork.created_at),
+        }))
     for item in order.items:
         upsert_row(db, "Order_Items", assert_safe({
             "id": item.id,

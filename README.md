@@ -51,9 +51,10 @@ demo customer is never created in non-development environments.
 - Product variant and stock selection, cart persistence for guests, and
   authenticated server-side cart operations.
 - Guest/customer checkout with server-side stock validation, idempotency key,
-  order creation and optional Sheets sync.
+  order creation, optional design artwork upload and optional Sheets sync.
 - Custom print requests with optional artwork and sync logging; admins can
-  review request details and checkout notes in the dashboard.
+  review request details, artwork previews, checkout notes and in-app new-order
+  notifications in the dashboard.
 - Customer login/register, password reset endpoints, and separate admin login
   endpoint.   Admin dashboard operations and the React Native mobile application are available
   as separate clients; mobile online payment and push delivery require provider
