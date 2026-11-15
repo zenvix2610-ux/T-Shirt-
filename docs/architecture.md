@@ -1,4 +1,4 @@
-# தமிழ் Drifts architecture and API plan
+# திகழ் Drifts architecture and API plan
 
 ## Ownership and data flow
 
